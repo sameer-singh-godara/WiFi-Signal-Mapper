@@ -20,4 +20,7 @@ interface WiFiDao {
 
     @Query("SELECT * FROM wifi_data WHERE location = :location")
     suspend fun getDataByLocation(location: String): List<WiFiData>
+
+    @Query("DELETE FROM wifi_data")
+    suspend fun clearAll()
 }

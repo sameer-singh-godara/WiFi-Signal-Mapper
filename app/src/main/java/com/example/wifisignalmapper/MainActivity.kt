@@ -166,7 +166,7 @@ class MainActivity : AppCompatActivity() {
                     val scanResults = wifiManager.scanResults
                     withContext(Dispatchers.Main) {
                         if (scanResults.isNotEmpty()) {
-                            val apList = scanResults.map { "${it.SSID} (${it.BSSID}) - ${it.level} dBm" }
+                            val apList = scanResults.map { "${it.SSID} (${it.BSSID}): ${it.level} dBm" }
                             val statusTextContent = "Detected ${scanResults.size} APs\n" + apList.joinToString("\n")
                             statusText.text = statusTextContent
                             sampleCountText.text = "Samples: 0"
@@ -222,7 +222,7 @@ class MainActivity : AppCompatActivity() {
                     val scanResults = wifiManager.scanResults
                     withContext(Dispatchers.Main) {
                         if (scanResults.isNotEmpty()) {
-                            val apList = scanResults.map { "${it.SSID} (${it.BSSID}) - ${it.level} dBm" }
+                            val apList = scanResults.map { "${it.SSID} (${it.BSSID}): ${it.level} dBm" }
                             val statusTextContent = "Detected ${scanResults.size} APs, Scanning: $totalSamples/$SAMPLES_PER_SCAN samples\n" + apList.joinToString("\n")
                             statusText.text = statusTextContent
                             sampleCountText.text = "Samples: $totalSamples"
