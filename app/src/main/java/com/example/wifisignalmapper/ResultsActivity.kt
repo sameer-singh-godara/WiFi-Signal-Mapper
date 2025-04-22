@@ -88,7 +88,8 @@ class ResultsAdapter(private val locationData: List<Pair<String, List<WiFiData>>
         } else {
             val lat = location.split(",")[0].split("=")[1].toDoubleOrNull() ?: 0.0
             val lon = location.split(",")[1].split("=")[1].toDoubleOrNull() ?: 0.0
-            holder.locationText.text = "Location: \nLat: ${String.format("%.6f", lat)}, Lon: ${String.format("%.6f", lon)}"
+            val locationName = data.first().locationName ?: "Unknown Location"
+            holder.locationText.text = "$locationName\nLat: ${String.format("%.3f", lat)}, Lon: ${String.format("%.3f", lon)}"
 
             holder.apContainer.removeAllViews()
             data.groupBy { it.bssid }.forEach { (bssid, apData) ->

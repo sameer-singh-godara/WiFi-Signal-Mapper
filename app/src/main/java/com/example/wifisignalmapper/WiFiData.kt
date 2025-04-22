@@ -10,5 +10,6 @@ data class WiFiData(
     val apName: String?,
     val rssi: Int,
     val timestamp: Long,
-    val location: String?
+    val location: String?,
+    val locationName: String? = null
 )
