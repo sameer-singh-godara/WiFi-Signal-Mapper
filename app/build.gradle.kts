@@ -43,7 +43,8 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.room.runtime.android)
-    implementation(libs.androidx.room.ktx) // Added for Room Kotlin extensions
+    implementation(libs.androidx.room.ktx)
+    implementation(libs.play.services.location) // Added for Room Kotlin extensions
     kapt(libs.androidx.room.compiler) // Added for Room annotation processing
     implementation(libs.kotlinx.coroutines.android) // Added for coroutines
     testImplementation(libs.junit)
