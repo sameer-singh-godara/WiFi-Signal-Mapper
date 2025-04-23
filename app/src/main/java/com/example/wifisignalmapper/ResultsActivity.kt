@@ -89,20 +89,33 @@ class ResultsAdapter(private val locationData: List<Pair<String, List<WiFiData>>
             val lat = location.split(",")[0].split("=")[1].toDoubleOrNull() ?: 0.0
             val lon = location.split(",")[1].split("=")[1].toDoubleOrNull() ?: 0.0
             val locationName = data.first().locationName ?: "Unknown Location"
-            holder.locationText.text = "$locationName\nLat: ${String.format("%.3f", lat)}, Lon: ${String.format("%.3f", lon)}"
+
+            // Calculate additional metrics
+            val totalAPs = data.groupBy { it.bssid }.size
+            val rssiValues = data.map { it.rssi }
+            val avgRssi = rssiValues.average()
+            val minRssi = rssiValues.minOrNull() ?: 0
+            val maxRssi = rssiValues.maxOrNull() ?: 0
+
+            // Update locationText with all details
+            holder.locationText.text = "$locationName\n" +
+                    "Lat: ${String.format("%.3f", lat)}, Lon: ${String.format("%.3f", lon)}\n" +
+                    "Total APs: $totalAPs\n" +
+                    "Avg RSSI: ${String.format("%.1f", avgRssi)} dBm\n" +
+                    "RSSI Range: $minRssi to $maxRssi dBm"
 
             holder.apContainer.removeAllViews()
             data.groupBy { it.bssid }.forEach { (bssid, apData) ->
-                val rssiValues = apData.map { it.rssi }
-                val avgRssi = rssiValues.average()
-                val minRssi = rssiValues.minOrNull() ?: 0
-                val maxRssi = rssiValues.maxOrNull() ?: 0
+                val apRssiValues = apData.map { it.rssi }
+                val apAvgRssi = apRssiValues.average()
+                val apMinRssi = apRssiValues.minOrNull() ?: 0
+                val apMaxRssi = apRssiValues.maxOrNull() ?: 0
 
                 val apView = android.view.LayoutInflater.from(holder.itemView.context)
                     .inflate(R.layout.item_ap_detail, holder.apContainer, false)
                 apView.findViewById<android.widget.TextView>(R.id.apNameText).text = "AP: ${apData.first().apName ?: bssid} ($bssid)"
                 apView.findViewById<android.widget.TextView>(R.id.apDetailsText).text =
-                    "Samples: ${apData.size}\nAverage RSSI: ${String.format("%.1f", avgRssi)} dBm\nRange: $minRssi to $maxRssi dBm"
+                    "Samples: ${apData.size}\nAverage RSSI: ${String.format("%.1f", apAvgRssi)} dBm\nRange: $apMinRssi to $apMaxRssi dBm"
                 holder.apContainer.addView(apView)
             }
         }
