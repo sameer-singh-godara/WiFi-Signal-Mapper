@@ -9,12 +9,15 @@ import android.location.LocationManager
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.util.Log
+import android.view.View
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.CoroutineScope
@@ -37,13 +40,20 @@ class MainActivity : AppCompatActivity() {
     private var currentLongitude: Double = 0.0
     private var currentLatitude: Double = 0.0
     private var currentLocationName: String? = null
+    private var lastLatitude: Double = 0.0
+    private var lastLongitude: Double = 0.0
+    private var lastLocationName: String? = null
+    private var lastErrorMessage: String? = null
+    private var lastButtonEnabledState: Boolean = true
     private var hasPromptedForLocationName = false
+    private var lastDetectedApCount: Int = 0
     private val REQUEST_PERMISSIONS_CODE = 1
-    private lateinit var statusText: TextView
-    private lateinit var locationText: TextView
+    private lateinit var cardHeaderText: TextView
+    private lateinit var apContainer: LinearLayout
     private val SAMPLES_PER_SCAN = 100
-    private val LOCATION_REFRESH_INTERVAL = 1000L // 1 second
+    private val LOCATION_REFRESH_INTERVAL = 5000L // 5 seconds
     private val AP_DETECTION_INTERVAL = 500L // 0.5 seconds
+    private val ERROR_UPDATE_INTERVAL = 5000L // 5 seconds
     private val TAG = "WiFiSignalMapper"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,9 +64,8 @@ class MainActivity : AppCompatActivity() {
         database = AppDatabase.getDatabase(this)
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
-        statusText = findViewById(R.id.statusText)
-        locationText = findViewById(R.id.locationText)
-        val sampleCountText = findViewById<TextView>(R.id.sampleCountText)
+        cardHeaderText = findViewById(R.id.cardHeaderText)
+        apContainer = findViewById(R.id.apContainer)
         val startStopButton = findViewById<Button>(R.id.startStopButton)
         val viewResultsButton = findViewById<Button>(R.id.viewResultsButton)
 
@@ -64,12 +73,12 @@ class MainActivity : AppCompatActivity() {
             if (!isScanning) {
                 if (hasRequiredPermissions() && wifiManager.isWifiEnabled) {
                     if (isLocationEnabled()) {
-                        getLocationAndStartScanning(sampleCountText, startStopButton)
+                        getLocationAndStartScanning(startStopButton)
                         startStopButton.text = "Stop Scanning"
                         isApDetectionActive = false // Stop AP detection
                         isLocationFetchingActive = false // Pause location fetching
                     } else {
-                        statusText.text = "Location services are disabled. Please enable location."
+                        displayError("Location services are disabled. Please enable them to scan.")
                         Toast.makeText(this, "Please enable location services to scan.", Toast.LENGTH_LONG).show()
                     }
                 } else {
@@ -78,10 +87,12 @@ class MainActivity : AppCompatActivity() {
                         missingPermissions.add("Location")
                     if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_WIFI_STATE) != PackageManager.PERMISSION_GRANTED)
                         missingPermissions.add("Wi-Fi State")
-                    if (!wifiManager.isWifiEnabled)
-                        statusText.text = "Wi-Fi is disabled. Please enable it to scan."
-                    else
+                    if (!wifiManager.isWifiEnabled) {
+                        displayError("Wi-Fi is disabled. Please enable it to scan.")
+                    } else {
                         Toast.makeText(this, "Missing permissions: ${missingPermissions.joinToString(", ")}. Grant them to scan.", Toast.LENGTH_LONG).show()
+                    }
+                    apContainer.removeAllViews()
                     if (!hasRequiredPermissions())
                         requestPermissions()
                 }
@@ -90,7 +101,7 @@ class MainActivity : AppCompatActivity() {
                 startStopButton.text = "Start Scanning"
                 isApDetectionActive = true // Resume AP detection
                 isLocationFetchingActive = true // Resume location fetching
-                startApDetection(sampleCountText, startStopButton)
+                startApDetection(startStopButton)
                 startLocationUpdates()
             }
         }
@@ -108,26 +119,41 @@ class MainActivity : AppCompatActivity() {
                 locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
     }
 
+    private fun displayError(message: String) {
+        if (lastErrorMessage != message) {
+            cardHeaderText.text = message
+            cardHeaderText.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+            apContainer.removeAllViews()
+            lastErrorMessage = message
+        }
+        val startStopButton = findViewById<Button>(R.id.startStopButton)
+        if (lastButtonEnabledState) {
+            startStopButton.isEnabled = false
+            lastButtonEnabledState = false
+        }
+    }
+
+    private fun clearError() {
+        lastErrorMessage = null
+        val startStopButton = findViewById<Button>(R.id.startStopButton)
+        if (!lastButtonEnabledState) {
+            startStopButton.isEnabled = true
+            lastButtonEnabledState = true
+        }
+    }
+
     private fun checkInitialPermissions() {
         if (!hasRequiredPermissions()) {
             requestPermissions()
         } else if (!wifiManager.isWifiEnabled) {
-            val sampleCountText = findViewById<TextView>(R.id.sampleCountText)
-            val startStopButton = findViewById<Button>(R.id.startStopButton)
-            sampleCountText.text = "Samples scanned: 0"
-            startStopButton.isEnabled = false
-            statusText.text = "Wi-Fi is disabled. Enable it to scan."
+            displayError("Wi-Fi is disabled. Enable it to scan.")
         } else if (!isLocationEnabled()) {
-            val sampleCountText = findViewById<TextView>(R.id.sampleCountText)
-            val startStopButton = findViewById<Button>(R.id.startStopButton)
-            sampleCountText.text = "Samples scanned: 0"
-            startStopButton.isEnabled = false
-            statusText.text = "Location services are disabled. Enable them to scan."
+            displayError("Location services are disabled. Please enable them to scan.")
         } else {
             Toast.makeText(this, "You can now scan for WiFi networks!", Toast.LENGTH_SHORT).show()
             updateLocation()
             startLocationUpdates()
-            startApDetection(findViewById(R.id.sampleCountText), findViewById(R.id.startStopButton))
+            startApDetection(findViewById(R.id.startStopButton))
         }
     }
 
@@ -147,26 +173,20 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        val sampleCountText = findViewById<TextView>(R.id.sampleCountText)
         val startStopButton = findViewById<Button>(R.id.startStopButton)
         if (requestCode == REQUEST_PERMISSIONS_CODE) {
             if (hasRequiredPermissions() && wifiManager.isWifiEnabled && isLocationEnabled()) {
                 Toast.makeText(this, "Permissions granted! You can now scan.", Toast.LENGTH_SHORT).show()
+                clearError()
                 updateLocation()
                 startLocationUpdates()
-                startApDetection(sampleCountText, startStopButton)
+                startApDetection(startStopButton)
             } else if (!wifiManager.isWifiEnabled) {
-                statusText.text = "Wi-Fi is disabled. Please enable it to scan."
-                sampleCountText.text = "Samples scanned: 0"
-                startStopButton.isEnabled = false
+                displayError("Wi-Fi is disabled. Please enable it to scan.")
             } else if (!isLocationEnabled()) {
-                statusText.text = "Location services are disabled. Please enable them to scan."
-                sampleCountText.text = "Samples scanned: 0"
-                startStopButton.isEnabled = false
+                displayError("Location services are disabled. Please enable them to scan.")
             } else {
-                statusText.text = "Location and Wi-Fi permissions denied"
-                sampleCountText.text = "Samples scanned: 0"
-                startStopButton.isEnabled = false
+                displayError("Location and Wi-Fi permissions denied")
             }
         }
     }
@@ -187,7 +207,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startApDetection(sampleCountText: TextView, startStopButton: Button) {
+    private fun startApDetection(startStopButton: Button) {
         job = Job()
         CoroutineScope(Dispatchers.IO + job).launch {
             while (isActive) {
@@ -199,30 +219,75 @@ class MainActivity : AppCompatActivity() {
                     wifiManager.startScan()
                     val scanResults = wifiManager.scanResults
                     withContext(Dispatchers.Main) {
+                        val locationName = currentLocationName ?: "Unknown Location"
+                        lastDetectedApCount = scanResults.size
+                        val newText = "You are at: $locationName\n" +
+                                "Lat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}\n\n" +
+                                "Detected $lastDetectedApCount APs"
+                        if (cardHeaderText.text.toString() != newText) {
+                            cardHeaderText.text = newText
+                            cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                        }
+                        apContainer.removeAllViews()
                         if (scanResults.isNotEmpty()) {
-                            val apList = scanResults.map { "${it.SSID} (${it.BSSID}): ${it.level} dBm" }
-                            val statusTextContent = "Detected ${scanResults.size} APs\n" + apList.joinToString("\n")
-                            statusText.text = statusTextContent
-                            sampleCountText.text = "Samples: 0"
-                            startStopButton.isEnabled = true
+                            scanResults.forEach { result ->
+                                val apLayout = LinearLayout(this@MainActivity).apply {
+                                    orientation = LinearLayout.VERTICAL
+                                    setPadding(8, 8, 8, 8)
+                                }
+                                val ssidText = TextView(this@MainActivity).apply {
+                                    text = result.SSID.takeIf { it.isNotEmpty() } ?: result.BSSID
+                                    textSize = 16f
+                                    setTypeface(null, android.graphics.Typeface.BOLD)
+                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                                }
+                                val bssidText = TextView(this@MainActivity).apply {
+                                    text = "BSSID: ${result.BSSID}"
+                                    textSize = 14f
+                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                                }
+                                val rssiText = TextView(this@MainActivity).apply {
+                                    text = "RSSI: ${result.level} dBm"
+                                    textSize = 14f
+                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                                }
+                                val divider = View(this@MainActivity).apply {
+                                    layoutParams = LinearLayout.LayoutParams(
+                                        LinearLayout.LayoutParams.MATCH_PARENT,
+                                        1
+                                    ).apply { topMargin = 8 }
+                                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                                }
+                                apLayout.addView(ssidText)
+                                apLayout.addView(bssidText)
+                                apLayout.addView(rssiText)
+                                apLayout.addView(divider)
+                                apContainer.addView(apLayout)
+                            }
+                            if (!lastButtonEnabledState) {
+                                startStopButton.isEnabled = true
+                                lastButtonEnabledState = true
+                            }
                             Log.d(TAG, "APs detected: ${scanResults.size}")
                         } else {
-                            statusText.text = "No APs detected"
-                            sampleCountText.text = "Samples: 0"
-                            startStopButton.isEnabled = false
+                            if (lastButtonEnabledState) {
+                                startStopButton.isEnabled = false
+                                lastButtonEnabledState = false
+                            }
                             Log.w(TAG, "No APs detected")
                         }
+                        clearError()
                     }
                 } else {
                     withContext(Dispatchers.Main) {
                         if (!wifiManager.isWifiEnabled) {
-                            statusText.text = "Wi-Fi is disabled. Please enable it to scan."
+                            displayError("Wi-Fi is disabled. Please enable it to scan.")
                         } else if (!isLocationEnabled()) {
-                            statusText.text = "Location services are disabled. Please enable them to scan."
+                            displayError("Location services are disabled. Please enable them to scan.")
                         }
-                        sampleCountText.text = "Samples: 0"
-                        startStopButton.isEnabled = false
                     }
+                    delay(ERROR_UPDATE_INTERVAL)
+                    continue
                 }
                 delay(AP_DETECTION_INTERVAL)
             }
@@ -231,7 +296,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateLocation() {
         if (!isLocationEnabled()) {
-            locationText.text = "Location services are disabled"
+            // Skip error display to avoid overlap with startApDetection
             currentLatitude = 0.0
             currentLongitude = 0.0
             currentLocationName = null
@@ -249,12 +314,15 @@ class MainActivity : AppCompatActivity() {
                 val newLatitude = String.format("%.3f", it.latitude).toDouble()
                 val newLongitude = String.format("%.3f", it.longitude).toDouble()
 
-                // Only prompt for new location name if coordinates have changed significantly
-                if (newLatitude != currentLatitude || newLongitude != currentLongitude) {
-                    currentLatitude = newLatitude
-                    currentLongitude = newLongitude
-                    hasPromptedForLocationName = false
+                // Only update if location changed significantly or scanning is not active
+                if (isScanning || (Math.abs(newLatitude - lastLatitude) < 0.001 && Math.abs(newLongitude - lastLongitude) < 0.001 && currentLocationName == lastLocationName)) {
+                    return@addOnSuccessListener
                 }
+
+                currentLatitude = newLatitude
+                currentLongitude = newLongitude
+                lastLatitude = newLatitude
+                lastLongitude = newLongitude
 
                 // Check if location exists in database
                 CoroutineScope(Dispatchers.IO).launch {
@@ -263,21 +331,30 @@ class MainActivity : AppCompatActivity() {
                     withContext(Dispatchers.Main) {
                         if (existingLocation.isNotEmpty() && existingLocation.first().locationName != null) {
                             currentLocationName = existingLocation.first().locationName
-                            locationText.text = "You are at: $currentLocationName\nLat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}${if (isScanning) " (Locked)" else ""}"
+                            lastLocationName = currentLocationName
                             hasPromptedForLocationName = true
                         } else if (!hasPromptedForLocationName) {
                             promptForLocationName()
                             hasPromptedForLocationName = true
-                        } else {
-                            locationText.text = "Location: $currentLocationName\nLat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}${if (isScanning) " (Locked)" else ""}"
                         }
+                        val newText = "You are at: ${currentLocationName ?: "Unknown Location"}\n" +
+                                "Lat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}\n\n" +
+                                "Detected $lastDetectedApCount APs"
+                        if (cardHeaderText.text.toString() != newText) {
+                            cardHeaderText.text = newText
+                            cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                        }
+                        clearError()
                     }
                 }
             } ?: run {
-                locationText.text = "Location: Unable to get location"
+                displayError("Unable to get location. Ensure location services are enabled.")
                 currentLatitude = 0.0
                 currentLongitude = 0.0
                 currentLocationName = null
+                lastLatitude = 0.0
+                lastLongitude = 0.0
+                lastLocationName = null
                 hasPromptedForLocationName = false
             }
         }
@@ -291,20 +368,36 @@ class MainActivity : AppCompatActivity() {
 
         builder.setPositiveButton("OK") { _, _ ->
             currentLocationName = input.text.toString().trim().takeIf { it.isNotEmpty() } ?: "Unknown Location"
-            locationText.text = "Location: $currentLocationName\nLat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}${if (isScanning) " (Locked)" else ""}"
+            lastLocationName = currentLocationName
+            val newText = "You are at: $currentLocationName\n" +
+                    "Lat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}\n\n" +
+                    "Detected $lastDetectedApCount APs"
+            if (cardHeaderText.text.toString() != newText) {
+                cardHeaderText.text = newText
+                cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+            }
+            clearError()
         }
         builder.setNegativeButton("Cancel") { dialog, _ ->
             currentLocationName = "Unknown Location"
-            locationText.text = "Location: $currentLocationName\nLat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}${if (isScanning) " (Locked)" else ""}"
+            lastLocationName = currentLocationName
+            val newText = "You are at: $currentLocationName\n" +
+                    "Lat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}\n\n" +
+                    "Detected $lastDetectedApCount APs"
+            if (cardHeaderText.text.toString() != newText) {
+                cardHeaderText.text = newText
+                cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+            }
+            clearError()
             dialog.cancel()
         }
 
         builder.show()
     }
 
-    private fun getLocationAndStartScanning(sampleCountText: TextView, startStopButton: Button) {
+    private fun getLocationAndStartScanning(startStopButton: Button) {
         if (!isLocationEnabled()) {
-            statusText.text = "Location services are disabled. Please enable location."
+            displayError("Location services are disabled. Please enable them to scan.")
             return
         }
 
@@ -316,6 +409,8 @@ class MainActivity : AppCompatActivity() {
             location?.let {
                 currentLatitude = String.format("%.3f", it.latitude).toDouble()
                 currentLongitude = String.format("%.3f", it.longitude).toDouble()
+                lastLatitude = currentLatitude
+                lastLongitude = currentLongitude
 
                 CoroutineScope(Dispatchers.IO).launch {
                     val locationString = "lat=$currentLatitude,lon=$currentLongitude"
@@ -323,29 +418,37 @@ class MainActivity : AppCompatActivity() {
                     withContext(Dispatchers.Main) {
                         if (existingLocation.isNotEmpty() && existingLocation.first().locationName != null) {
                             currentLocationName = existingLocation.first().locationName
-                            locationText.text = "You are at: $currentLocationName\nLat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)} (Locked)"
+                            lastLocationName = currentLocationName
                             hasPromptedForLocationName = true
-                            startAreaScanning(sampleCountText, startStopButton)
                         } else if (!hasPromptedForLocationName) {
                             promptForLocationName()
                             hasPromptedForLocationName = true
-                            startAreaScanning(sampleCountText, startStopButton)
-                        } else {
-                            startAreaScanning(sampleCountText, startStopButton)
                         }
+                        val newText = "You are at: ${currentLocationName ?: "Unknown Location"}\n" +
+                                "Lat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)} (Locked)\n\n" +
+                                "Detected $lastDetectedApCount APs"
+                        if (cardHeaderText.text.toString() != newText) {
+                            cardHeaderText.text = newText
+                            cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                        }
+                        clearError()
+                        startAreaScanning(startStopButton)
                     }
                 }
             } ?: run {
-                statusText.text = "Unable to get location. Ensure location services are enabled."
+                displayError("Unable to get location. Ensure location services are enabled.")
                 currentLatitude = 0.0
                 currentLongitude = 0.0
                 currentLocationName = null
+                lastLatitude = 0.0
+                lastLongitude = 0.0
+                lastLocationName = null
                 hasPromptedForLocationName = false
             }
         }
     }
 
-    private fun startAreaScanning(sampleCountText: TextView, startStopButton: Button) {
+    private fun startAreaScanning(startStopButton: Button) {
         isScanning = true
         isLocationFetchingActive = false // Pause location fetching
         job = Job()
@@ -358,15 +461,54 @@ class MainActivity : AppCompatActivity() {
                     wifiManager.startScan()
                     val scanResults = wifiManager.scanResults
                     withContext(Dispatchers.Main) {
-                        if (scanResults.isNotEmpty()) {
-                            val apList = scanResults.map { "${it.SSID} (${it.BSSID}): ${it.level} dBm" }
-                            val statusTextContent = "Detected ${scanResults.size} APs, Scanning: $totalSamples/$SAMPLES_PER_SCAN samples\n" + apList.joinToString("\n")
-                            statusText.text = statusTextContent
-                            sampleCountText.text = "Samples: $totalSamples"
-                            updateDatabase(scanResults)
-                        } else {
-                            statusText.text = "No APs detected in current scan"
+                        val locationName = currentLocationName ?: "Unknown Location"
+                        lastDetectedApCount = scanResults.size
+                        val newText = "You are at: $locationName\n" +
+                                "Lat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)} (Locked)\n\n" +
+                                "Detected $lastDetectedApCount APs\nSampling: $totalSamples/$SAMPLES_PER_SCAN"
+                        if (cardHeaderText.text.toString() != newText) {
+                            cardHeaderText.text = newText
+                            cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                         }
+                        apContainer.removeAllViews()
+                        if (scanResults.isNotEmpty()) {
+                            scanResults.forEach { result ->
+                                val apLayout = LinearLayout(this@MainActivity).apply {
+                                    orientation = LinearLayout.VERTICAL
+                                    setPadding(8, 8, 8, 8)
+                                }
+                                val ssidText = TextView(this@MainActivity).apply {
+                                    text = result.SSID.takeIf { it.isNotEmpty() } ?: result.BSSID
+                                    textSize = 16f
+                                    setTypeface(null, android.graphics.Typeface.BOLD)
+                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                                }
+                                val bssidText = TextView(this@MainActivity).apply {
+                                    text = "BSSID: ${result.BSSID}"
+                                    textSize = 14f
+                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                                }
+                                val rssiText = TextView(this@MainActivity).apply {
+                                    text = "RSSI: ${result.level} dBm"
+                                    textSize = 14f
+                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                                }
+                                val divider = View(this@MainActivity).apply {
+                                    layoutParams = LinearLayout.LayoutParams(
+                                        LinearLayout.LayoutParams.MATCH_PARENT,
+                                        1
+                                    ).apply { topMargin = 8 }
+                                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                                }
+                                apLayout.addView(ssidText)
+                                apLayout.addView(bssidText)
+                                apLayout.addView(rssiText)
+                                apLayout.addView(divider)
+                                apContainer.addView(apLayout)
+                            }
+                            updateDatabase(scanResults)
+                        }
+                        clearError()
                     }
                     if (scanResults.isNotEmpty()) {
                         scanResults.forEach { ap ->
@@ -378,15 +520,16 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     withContext(Dispatchers.Main) {
                         if (!wifiManager.isWifiEnabled) {
-                            statusText.text = "Wi-Fi is disabled. Scanning stopped."
+                            displayError("Wi-Fi is disabled. Scanning stopped.")
                         } else if (!isLocationEnabled()) {
-                            statusText.text = "Location services are disabled. Scanning stopped."
+                            displayError("Location services are disabled. Scanning stopped.")
                         }
+                        lastDetectedApCount = 0
                         stopScanning()
                         startStopButton.text = "Start Scanning"
                         isApDetectionActive = true
                         isLocationFetchingActive = true
-                        startApDetection(sampleCountText, startStopButton)
+                        startApDetection(startStopButton)
                         startLocationUpdates()
                     }
                     break
@@ -413,8 +556,22 @@ class MainActivity : AppCompatActivity() {
                     Log.e(TAG, "Failed to save data to database: ${e.message}")
                 }
                 withContext(Dispatchers.Main) {
-                    statusText.text = "Scan completed. $totalSamples samples saved."
-                    stopScanning() // Reset state to unlock location and resume detection
+                    val locationName = currentLocationName ?: "Unknown Location"
+                    val newText = "You are at: $locationName\n" +
+                            "Lat: ${String.format("%.3f", currentLatitude)}, Lon: ${String.format("%.3f", currentLongitude)}\n\n" +
+                            "Scan completed. $totalSamples samples saved."
+                    if (cardHeaderText.text.toString() != newText) {
+                        cardHeaderText.text = newText
+                        cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
+                    }
+                    Toast.makeText(this@MainActivity, "Scan complete. Data saved in database.", Toast.LENGTH_SHORT).show()
+                    apContainer.removeAllViews()
+                    lastDetectedApCount = 0
+                    clearError()
+                }
+                delay(5000L) // Wait 5 seconds before transitioning to non-scanning state
+                withContext(Dispatchers.Main) {
+                    stopScanning()
                     startStopButton.text = "Start Scanning"
                 }
             }
@@ -443,7 +600,7 @@ class MainActivity : AppCompatActivity() {
         job.cancel()
         isApDetectionActive = true
         isLocationFetchingActive = true
-        startApDetection(findViewById(R.id.sampleCountText), findViewById(R.id.startStopButton))
+        startApDetection(findViewById(R.id.startStopButton))
         startLocationUpdates()
     }
 
