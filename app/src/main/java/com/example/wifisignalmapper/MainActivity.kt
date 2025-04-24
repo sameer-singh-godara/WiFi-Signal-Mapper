@@ -234,7 +234,6 @@ class MainActivity : AppCompatActivity() {
                                 "Detected $lastDetectedApCount APs"
                         if (cardHeaderText.text.toString() != newText) {
                             cardHeaderText.text = newText
-                            cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                         }
                         apAdapter.updateData(scanResults)
                         if (scanResults.isNotEmpty()) {
@@ -312,7 +311,6 @@ class MainActivity : AppCompatActivity() {
                                 "Detected $lastDetectedApCount APs"
                         if (cardHeaderText.text.toString() != newText) {
                             cardHeaderText.text = newText
-                            cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                         }
                         clearError()
                     }
@@ -344,7 +342,6 @@ class MainActivity : AppCompatActivity() {
                     "Detected $lastDetectedApCount APs"
             if (cardHeaderText.text.toString() != newText) {
                 cardHeaderText.text = newText
-                cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
             }
             clearError()
         }
@@ -356,7 +353,6 @@ class MainActivity : AppCompatActivity() {
                     "Detected $lastDetectedApCount APs"
             if (cardHeaderText.text.toString() != newText) {
                 cardHeaderText.text = newText
-                cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
             }
             clearError()
             dialog.cancel()
@@ -399,7 +395,6 @@ class MainActivity : AppCompatActivity() {
                                 "Detected $lastDetectedApCount APs"
                         if (cardHeaderText.text.toString() != newText) {
                             cardHeaderText.text = newText
-                            cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                         }
                         clearError()
                         startAreaScanning(startStopButton)
@@ -438,7 +433,6 @@ class MainActivity : AppCompatActivity() {
                                 "Detected $lastDetectedApCount APs\nSampling: $totalSamples/$SAMPLES_PER_SCAN"
                         if (cardHeaderText.text.toString() != newText) {
                             cardHeaderText.text = newText
-                            cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                         }
                         apAdapter.updateData(scanResults)
                         if (scanResults.isNotEmpty()) {
@@ -498,7 +492,6 @@ class MainActivity : AppCompatActivity() {
                             "Scan completed. $totalSamples samples saved."
                     if (cardHeaderText.text.toString() != newText) {
                         cardHeaderText.text = newText
-                        cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                     }
                     Toast.makeText(this@MainActivity, "Scan complete. Data saved in database.", Toast.LENGTH_SHORT).show()
                     apAdapter.updateData(emptyList())
