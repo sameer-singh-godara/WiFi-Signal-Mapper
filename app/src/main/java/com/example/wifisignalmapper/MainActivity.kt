@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cardHeaderText: TextView
     private lateinit var apRecyclerView: RecyclerView
     private lateinit var apAdapter: ApAdapter
+    private var defaultTextColor: Int = 0 // Store the default text color
     private val SAMPLES_PER_SCAN = 100
     private val LOCATION_REFRESH_INTERVAL = 5000L // 5 seconds
     private val AP_DETECTION_INTERVAL = 500L // 0.5 seconds
@@ -69,6 +70,8 @@ class MainActivity : AppCompatActivity() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         cardHeaderText = findViewById(R.id.cardHeaderText)
+        // Fetch the default text color after initializing cardHeaderText
+        defaultTextColor = cardHeaderText.textColors.defaultColor
         apRecyclerView = findViewById(R.id.apRecyclerView)
         apRecyclerView.layoutManager = LinearLayoutManager(this)
         apAdapter = ApAdapter(mutableListOf())
@@ -148,6 +151,8 @@ class MainActivity : AppCompatActivity() {
             startStopButton.isEnabled = true
             lastButtonEnabledState = true
         }
+        // Reset the text color to the default
+        cardHeaderText.setTextColor(defaultTextColor)
     }
 
     private fun checkInitialPermissions() {
