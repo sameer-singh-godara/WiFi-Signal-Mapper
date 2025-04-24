@@ -21,6 +21,15 @@ The assignment required an app that logs RSS of WiFi APs as a matrix of 100 elem
 - **Showing the Data in the Demo from Three Locations (15 marks)**:
   - The `ResultsActivity.kt` displays data for distinct locations using a `RecyclerView`. Each location’s card shows the location name, coordinates, total APs, average RSSI, and RSSI range (min to max). Detailed AP data (BSSID, average RSSI, range, sample count) is shown per location. The app prompts users to name locations, ensuring at least three unique locations can be logged and compared, with metrics calculated dynamically.
 
+### How to Run
+1. **Enable WiFi and Location**: Turn on WiFi and location services on your Android device.
+2. **Enter Location Name**: Launch the app and, when prompted, enter a name for the current location (or it defaults to "Unknown Location").
+3. **Start Scanning**: Press the "Start Scanning" button to collect 100 RSS samples for the current location. The app displays real-time AP data during scanning.
+4. **Save Results**: After scanning, results are saved under the specified location name in the database.
+5. **Revisit Location**: If you return to a previously scanned location (based on coordinates), the app recognizes it and displays the stored location name.
+6. **Append Scans**: Scanning again at the same location appends new samples to the existing data for that location.
+7. **View Results**: Press the "View Results" button to see logged data for all locations, including RSSI metrics and ranges.
+
 ### Files
 - **Kotlin**:
   - `MainActivity.kt`: Manages the scanning UI, handles permissions, collects RSS samples, and updates the database.
@@ -38,9 +47,10 @@ The assignment required an app that logs RSS of WiFi APs as a matrix of 100 elem
   - Configures dependencies for Room, Coroutines, and Google Location Services.
 
 ### Limitations
+- Nearby locations may not be distinguished, as coordinates are rounded to the third decimal place for matching.
+- Maximum of 100 samples per location at a time, as per assignment requirements.
 - Requires WiFi and location services to be enabled, with appropriate permissions granted.
 - Scanning may be affected by device-specific WiFi scan throttling.
-- Maximum of 100 samples per location at a time, as per assignment requirements. 
 
 ### Future Work
 - Add offline caching for scan results to handle network disruptions.
