@@ -9,15 +9,18 @@ import android.location.LocationManager
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.util.Log
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.CoroutineScope
@@ -49,7 +52,8 @@ class MainActivity : AppCompatActivity() {
     private var lastDetectedApCount: Int = 0
     private val REQUEST_PERMISSIONS_CODE = 1
     private lateinit var cardHeaderText: TextView
-    private lateinit var apContainer: LinearLayout
+    private lateinit var apRecyclerView: RecyclerView
+    private lateinit var apAdapter: ApAdapter
     private val SAMPLES_PER_SCAN = 100
     private val LOCATION_REFRESH_INTERVAL = 5000L // 5 seconds
     private val AP_DETECTION_INTERVAL = 500L // 0.5 seconds
@@ -65,7 +69,11 @@ class MainActivity : AppCompatActivity() {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         cardHeaderText = findViewById(R.id.cardHeaderText)
-        apContainer = findViewById(R.id.apContainer)
+        apRecyclerView = findViewById(R.id.apRecyclerView)
+        apRecyclerView.layoutManager = LinearLayoutManager(this)
+        apAdapter = ApAdapter(mutableListOf())
+        apRecyclerView.adapter = apAdapter
+
         val startStopButton = findViewById<Button>(R.id.startStopButton)
         val viewResultsButton = findViewById<Button>(R.id.viewResultsButton)
 
@@ -92,7 +100,7 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         Toast.makeText(this, "Missing permissions: ${missingPermissions.joinToString(", ")}. Grant them to scan.", Toast.LENGTH_LONG).show()
                     }
-                    apContainer.removeAllViews()
+                    apAdapter.updateData(emptyList())
                     if (!hasRequiredPermissions())
                         requestPermissions()
                 }
@@ -123,7 +131,7 @@ class MainActivity : AppCompatActivity() {
         if (lastErrorMessage != message) {
             cardHeaderText.text = message
             cardHeaderText.setTextColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
-            apContainer.removeAllViews()
+            apAdapter.updateData(emptyList())
             lastErrorMessage = message
         }
         val startStopButton = findViewById<Button>(R.id.startStopButton)
@@ -228,42 +236,8 @@ class MainActivity : AppCompatActivity() {
                             cardHeaderText.text = newText
                             cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                         }
-                        apContainer.removeAllViews()
+                        apAdapter.updateData(scanResults)
                         if (scanResults.isNotEmpty()) {
-                            scanResults.forEach { result ->
-                                val apLayout = LinearLayout(this@MainActivity).apply {
-                                    orientation = LinearLayout.VERTICAL
-                                    setPadding(8, 8, 8, 8)
-                                }
-                                val ssidText = TextView(this@MainActivity).apply {
-                                    text = result.SSID.takeIf { it.isNotEmpty() } ?: result.BSSID
-                                    textSize = 16f
-                                    setTypeface(null, android.graphics.Typeface.BOLD)
-                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                                }
-                                val bssidText = TextView(this@MainActivity).apply {
-                                    text = "BSSID: ${result.BSSID}"
-                                    textSize = 14f
-                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                                }
-                                val rssiText = TextView(this@MainActivity).apply {
-                                    text = "RSSI: ${result.level} dBm"
-                                    textSize = 14f
-                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                                }
-                                val divider = View(this@MainActivity).apply {
-                                    layoutParams = LinearLayout.LayoutParams(
-                                        LinearLayout.LayoutParams.MATCH_PARENT,
-                                        1
-                                    ).apply { topMargin = 8 }
-                                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                                }
-                                apLayout.addView(ssidText)
-                                apLayout.addView(bssidText)
-                                apLayout.addView(rssiText)
-                                apLayout.addView(divider)
-                                apContainer.addView(apLayout)
-                            }
                             if (!lastButtonEnabledState) {
                                 startStopButton.isEnabled = true
                                 lastButtonEnabledState = true
@@ -296,7 +270,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateLocation() {
         if (!isLocationEnabled()) {
-            // Skip error display to avoid overlap with startApDetection
             currentLatitude = 0.0
             currentLongitude = 0.0
             currentLocationName = null
@@ -310,11 +283,9 @@ class MainActivity : AppCompatActivity() {
         }
         fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
             location?.let {
-                // Round to 3 decimal places
                 val newLatitude = String.format("%.3f", it.latitude).toDouble()
                 val newLongitude = String.format("%.3f", it.longitude).toDouble()
 
-                // Only update if location changed significantly or scanning is not active
                 if (isScanning || (Math.abs(newLatitude - lastLatitude) < 0.001 && Math.abs(newLongitude - lastLongitude) < 0.001 && currentLocationName == lastLocationName)) {
                     return@addOnSuccessListener
                 }
@@ -324,7 +295,6 @@ class MainActivity : AppCompatActivity() {
                 lastLatitude = newLatitude
                 lastLongitude = newLongitude
 
-                // Check if location exists in database
                 CoroutineScope(Dispatchers.IO).launch {
                     val locationString = "lat=$currentLatitude,lon=$currentLongitude"
                     val existingLocation = database.wiFiDao().getDataByLocation(locationString)
@@ -470,42 +440,8 @@ class MainActivity : AppCompatActivity() {
                             cardHeaderText.text = newText
                             cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                         }
-                        apContainer.removeAllViews()
+                        apAdapter.updateData(scanResults)
                         if (scanResults.isNotEmpty()) {
-                            scanResults.forEach { result ->
-                                val apLayout = LinearLayout(this@MainActivity).apply {
-                                    orientation = LinearLayout.VERTICAL
-                                    setPadding(8, 8, 8, 8)
-                                }
-                                val ssidText = TextView(this@MainActivity).apply {
-                                    text = result.SSID.takeIf { it.isNotEmpty() } ?: result.BSSID
-                                    textSize = 16f
-                                    setTypeface(null, android.graphics.Typeface.BOLD)
-                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                                }
-                                val bssidText = TextView(this@MainActivity).apply {
-                                    text = "BSSID: ${result.BSSID}"
-                                    textSize = 14f
-                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                                }
-                                val rssiText = TextView(this@MainActivity).apply {
-                                    text = "RSSI: ${result.level} dBm"
-                                    textSize = 14f
-                                    setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                                }
-                                val divider = View(this@MainActivity).apply {
-                                    layoutParams = LinearLayout.LayoutParams(
-                                        LinearLayout.LayoutParams.MATCH_PARENT,
-                                        1
-                                    ).apply { topMargin = 8 }
-                                    setBackgroundColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
-                                }
-                                apLayout.addView(ssidText)
-                                apLayout.addView(bssidText)
-                                apLayout.addView(rssiText)
-                                apLayout.addView(divider)
-                                apContainer.addView(apLayout)
-                            }
                             updateDatabase(scanResults)
                         }
                         clearError()
@@ -565,7 +501,7 @@ class MainActivity : AppCompatActivity() {
                         cardHeaderText.setTextColor(ContextCompat.getColor(this@MainActivity, android.R.color.darker_gray))
                     }
                     Toast.makeText(this@MainActivity, "Scan complete. Data saved in database.", Toast.LENGTH_SHORT).show()
-                    apContainer.removeAllViews()
+                    apAdapter.updateData(emptyList())
                     lastDetectedApCount = 0
                     clearError()
                 }
@@ -608,5 +544,36 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
         job.cancel()
         locationJob.cancel()
+    }
+
+    class ApAdapter(private val scanResults: MutableList<android.net.wifi.ScanResult>) :
+        RecyclerView.Adapter<ApAdapter.ViewHolder>() {
+
+        class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            val ssidText: TextView = itemView.findViewById(R.id.ssidText)
+            val bssidText: TextView = itemView.findViewById(R.id.bssidText)
+            val rssiText: TextView = itemView.findViewById(R.id.rssiText)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_ap_card, parent, false)
+            return ViewHolder(view)
+        }
+
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val result = scanResults[position]
+            holder.ssidText.text = result.SSID.takeIf { it.isNotEmpty() } ?: result.BSSID
+            holder.bssidText.text = "BSSID: ${result.BSSID}"
+            holder.rssiText.text = "RSSI: ${result.level} dBm"
+        }
+
+        override fun getItemCount(): Int = scanResults.size
+
+        fun updateData(newResults: List<android.net.wifi.ScanResult>) {
+            scanResults.clear()
+            scanResults.addAll(newResults)
+            notifyDataSetChanged()
+        }
     }
 }
