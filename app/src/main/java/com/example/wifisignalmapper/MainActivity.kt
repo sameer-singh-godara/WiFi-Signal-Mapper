@@ -424,7 +424,7 @@ class MainActivity : AppCompatActivity() {
         job = Job()
         CoroutineScope(Dispatchers.IO + job).launch {
             val samplesPerAp = mutableMapOf<String, MutableList<Int>>()
-            var totalSamples = 0
+            var totalSamples = 1
 
             while (isActive && totalSamples < SAMPLES_PER_SCAN) {
                 if (hasRequiredPermissions() && wifiManager.isWifiEnabled && isLocationEnabled()) {
